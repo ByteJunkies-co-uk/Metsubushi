@@ -7,7 +7,9 @@ This was borne from me having completed Sektor7's malware essentials course. Met
 
 We're using the [Go-donut package](https://github.com/Binject/go-donut/) by Binject. Credit to those guys - Dan Borges and Symbol Crash were both helpful while I have been developing this project. For anyone interested in this type of tooling it's worth checking the Binject github repo's, and taking a look at Dan's book: [Adversarial Tradecraft in Cybersecurity](https://www.packtpub.com/product/adversarial-tradecraft-in-cybersecurity/9781801076203).
 
-I have recently added the ability to obfuscate the generated implant binary with the Garble Golang obfuscator. See requirements below.
+I have recently added the ability to obfuscate the generated implant binary with the Garble Golang obfuscator and spoof code signing with Limelighter. See requirements below.
+
+**OPSEC NOTE: When using code signing avoid using microsoft domains as Defender has a habit of sniffing those out. Credit to @AffineSec for pointing it out.**
 
 ---
 ### Installation
@@ -70,4 +72,4 @@ Example:
 This would set `Arch` to x84, `Bypass` to setting 3, and `ExitOpt` to exit thread.
 
 
-**NOTE: it is a good idea to inspect all generated implants with (Redress)[https://github.com/goretk/redress] and test the binary in a lab environment**
+**NOTE: it is a good idea to inspect all generated implants with [Redress](https://github.com/goretk/redress) and test the binary in a lab environment**

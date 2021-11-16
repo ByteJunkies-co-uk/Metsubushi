@@ -1,15 +1,38 @@
 # Metsubushi
+###### _Sight-taker/closer of eyes_
 ---
 ### Introduction
-This tool started out as a simple Python script. After discovering Python just couldn't cut it for my intended use I decided to learn and move to Golang. So far I'm quite happy with that decision.
+This tool started out as a simple Python script. After discovering Python just
+couldn't cut it for my intended use I decided to learn and move to Golang. So
+far I'm quite happy with that decision.
 
-This was borne from me having completed Sektor7's malware essentials course. Metsubushi was supposed to be a simple way of automating the generation of droppers. I feel it's accomplished that with a few bells and whistles added as the project progressed.
+This was borne from me having completed Sektor7's Malware Essentials course.
+Metsubushi was supposed to be a simple way of automating the generation of
+droppers. I feel it's accomplished that with a few bells and whistles added as
+the project progressed.
 
-We're using the [Go-donut package](https://github.com/Binject/go-donut/) by Binject. Credit to those guys - Dan Borges and Symbol Crash were both helpful while I have been developing this project. For anyone interested in this type of tooling it's worth checking the Binject github repo's, and taking a look at Dan's book: [Adversarial Tradecraft in Cybersecurity](https://www.packtpub.com/product/adversarial-tradecraft-in-cybersecurity/9781801076203).
+We're using the [Go-donut package](https://github.com/Binject/go-donut/) by Binject. Credit to those guys - Dan Borges
+and Symbol Crash were both helpful while I have been developing this project.
+For anyone interested in this type of tooling it's worth checking the Binject
+github repo's, and taking a look at Dan's book: [Adversarial Tradecraft in Cybersecurity](https://www.packtpub.com/product/adversarial-tradecraft-in-cybersecurity/9781801076203).
 
-I have recently added the ability to obfuscate the generated implant binary with the Garble Golang obfuscator and spoof code signing with Limelighter. See requirements below.
+You can obfuscate the generated implant binary with the Garble Golang obfuscator
+and spoof code signing with Limelighter. See requirements below.
 
-**OPSEC NOTE: When using code signing avoid using microsoft domains as Defender has a habit of sniffing those out. Credit to @AffineSec for pointing it out.**
+In the v0.2a update I've added in the ability to build DLL binaries, however
+this feature does depend on having a compatible template file. Examples will
+be added eventually but for now you will need to create these yourselves.
+`template.go` can be used as somewhat of a skeleton for building your own
+templates to generate from; the important part is the decryption - beyond
+that you can fashion them however you wish.
+
+**Credits:**
+ - [C-Sto's BananaPhone](https://github.com/C-Sto/BananaPhone) - I've butchered one of his examples for my basic template.
+ - [Binject's Go-Donut implementation](https://github.com/Binject/go-donut/) - Does the heavy-lifting for PIC shellcode generation.
+ - [Optiv's Scarecrow project](https://github.com/optiv/ScareCrow) and [Tylous' Limelighter project](https://github.com/optiv/ScareCrow) - Responsible for the code signing magic.
+
+**OPSEC NOTE: When using code signing avoid using microsoft domains as Defender
+has a habit of sniffing those out. Credit to @AffineSec for pointing it out.**
 
 ---
 ### Installation
@@ -20,7 +43,7 @@ Requirements for Metsubushi are:
  - `openssl` - For Limlighter binary signing functions
  - `osslsigncode` - For Limelighter binary signing functions
 
-To install Metsubusi just run:
+To install Metsubushi just run:
 ```bash
 go install github.com/Bytejunkies-co-uk/metsubushi@latest
 ```
@@ -31,6 +54,7 @@ The flags for metsubushi are as follows:
 ```bash
 -p <file>		Payload. Pass it a Windows binary or file containing raw shellcode.
 -t <file>		Template. Pass the name of the template file you wish to generate a dropper from.
+-b <build>      Build type. 0 = EXE (default), 1 = DLL.
 -o <file>		OutFile. The name you wish you give the generated dropper.
 -a <arch>		Architecture. Either x86 or x64.
 -d <args>		Donut. If present the payload will be put through Binject's Go-donut package.
@@ -39,7 +63,9 @@ The flags for metsubushi are as follows:
 -q				Quiet. Do not display ASCII art banner.
 ```
 
-If you're using the in-built Go-donut shellcode generator (from [Binject](https://github.com/Binject)) you can customise the Donut configuration. The arguments are passed to Donut as a string which is then parsed into a configuration struct.
+If you're using the Go-donut shellcode generator option (from [Binject](https://github.com/Binject))
+you can customise the Donut configuration. The arguments are passed to
+Donut as a string which is then parsed into a configuration struct.
 
 The Go-donut options are:
 ```bash
@@ -70,6 +96,5 @@ Example:
 -d "a=x84,b=3,x=1"
 ```
 This would set `Arch` to x84, `Bypass` to setting 3, and `ExitOpt` to exit thread.
-
 
 **NOTE: it is a good idea to inspect all generated implants with [Redress](https://github.com/goretk/redress) and test the binary in a lab environment**
